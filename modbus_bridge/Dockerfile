@@ -1,4 +1,4 @@
-ARG BUILD_FROM
+ARG BUILD_FROM=ghcr.io/home-assisant/amd64-base:3.19
 FROM $BUILD_FROM
 
 # Устанавливаем Python и pip
