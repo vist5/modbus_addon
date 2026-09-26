@@ -47,7 +47,7 @@
     <h1>Редактирование датчика: {{ sensor.name }}</h1>
 
     {% if sensor %}
-    <form method="POST" action="/edit/{{ sensor.slave_id }}">
+    <form method="POST" action="{{ url_for('edit_sensor', slave_id=sensor.slave_id) }}">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 600px;">
             <label>Имя датчика:
                 <input type="text" name="name" value="{{ sensor.name }}" required style="width: 100%;">
@@ -72,11 +72,11 @@
             </label>
         </div>
         <button type="submit" class="btn-save" style="margin-top: 15px;">Сохранить</button>
-        <a href="/" class="btn-cancel" style="margin-top: 15px;">Отмена</a>
+        <a href="{{ url_for('index') }}" class="btn-cancel">Отмена</a>p: 15px;">Отмена</a>
     </form>
     {% else %}
     <p style="color: red;">Датчик с таким Slave ID не найден!</p>
-    <a href="/">Назад к списку</a>
+    <a href="{{ url_for('index') }}">Назад к списку</a>
     {% endif %}
 </body>
 </html>
