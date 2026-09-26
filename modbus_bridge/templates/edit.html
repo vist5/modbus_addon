@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Редактирование датчика</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #333; }
+        form {
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        label { display: block; margin-bottom: 10px; }
+        input, select {
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .btn-save {
+            padding: 10px 20px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .btn-cancel {
+            padding: 10px 20px;
+            background: #999;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Редактирование датчика: {{ sensor.name }}</h1>
+
+    {% if sensor %}
+    <form method="POST" action="/edit/{{ sensor.slave_id }}">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 600px;">
+            <label>Имя датчика:
+                <input type="text" name="name" value="{{ sensor.name }}" required style="width: 100%;">
+            </label>
+            <label>Slave ID (нельзя менять):
+                <input type="number" value="{{ sensor.slave_id }}" disabled style="width: 100%;">
+            </label>
+            <label>Регистр температуры:
+                <input type="number" name="temp_register" value="{{ sensor.temp_register }}" required style="width: 100%;">
+            </label>
+            <label>Регистр влажности:
+                <input type="number" name="hum_register" value="{{ sensor.hum_register }}" required style="width: 100%;">
+            </label>
+            <label>Тип регистра:
+                <select name="register_type" style="width: 100%;">
+                    <option value="holding" {% if sensor.register_type == "holding" %}selected{% endif %}>Holding</option>
+                    <option value="input" {% if sensor.register_type == "input" %}selected{% endif %}>Input</option>
+                </select>
+            </label>
+            <label>Множитель:
+                <input type="number" name="scale" step="0.01" value="{{ sensor.scale }}" required style="width: 100%;">
+            </label>
+        </div>
+        <button type="submit" class="btn-save" style="margin-top: 15px;">Сохранить</button>
+        <a href="/" class="btn-cancel" style="margin-top: 15px;">Отмена</a>
+    </form>
+    {% else %}
+    <p style="color: red;">Датчик с таким Slave ID не найден!</p>
+    <a href="/">Назад к списку</a>
+    {% endif %}
+</body>
+</html>
