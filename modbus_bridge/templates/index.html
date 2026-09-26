@@ -63,7 +63,7 @@
                 <td>{{ sensor.register_type }}</td>
                 <td>{{ sensor.scale }}</td>
                 <td>
-                    <a href="/edit/{{ sensor.slave_id }}" style="
+                    <a href="{{ url_for('edit_sensor', slave_id=sensor.slave_id) }}" style="
                         display: inline-block;
                         padding: 5px 10px;
                         background: #2196f3;
@@ -73,7 +73,7 @@
                         font-size: 14px;
                         margin-right: 5px;
                         ">Редакт .</a>
-                    <form method="POST" action="/delete" style="margin: 0;">
+                    <form method="POST" action="{{ url_for('delete_sensor') }}" style="margin: 0;">
                         <input type="hidden" name="slave_id" value="{{sensor.slave_id}}">
                         <button type="submit" style="
                         padding: 5px 10px;
@@ -95,7 +95,7 @@
     {% endif %}
 
     <h2>Добавить датчик</h2>
-    <form method="POST" action="/add" style="background: white; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+    <form method="POST" action="{{ url_for('add_sensor') }}" style="background: white; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width:  600px;">
             <label>Имя датчика:
                 <input type="text" name="name" required style="width: 100%;">
@@ -124,7 +124,7 @@
         </button>
     </form>
     <h2>Настройка Modbus</h2>
-    <form method="POST" action="/settings" style="background: white; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+    <form method="POST" action="{{ url_for('update_settings') }}" style="background: white; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 600px;">
             <label>COM-порт:
                 <input type="text" name="port" value="{{config.modbus.port}}" required style="width: 100%;">
