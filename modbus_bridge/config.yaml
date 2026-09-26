@@ -25,3 +25,5 @@ schema:
   mqtt_port: "int"
   modbus_port: "str"
   baudrate: "int"
+devices:
+  - /dev/ttyUSB0:/dev/ttyUSB0:rwm
