@@ -18,6 +18,8 @@ panel_title: Modbus Bridge
 options:
   mqtt_host: "core-mosquitto"
   mqtt_port: 1883
+  MQTT_USER: "modbus_bridge"        # логин MQTT из HA
+  MQTT_PASSWORD: "1111"
   modbus_port: "/dev/ttyUSB0"
   baudrate: 9600
 schema:
