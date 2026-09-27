@@ -10,13 +10,40 @@ from flask import Flask, jsonify, render_template, request, redirect, url_for
 app = Flask(__name__)
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+# 1. Оставляем ProxyFix только для IP/протокола — БЕЗ x_prefix
 app.wsgi_app = ProxyFix(
     app.wsgi_app,
     x_for=1,
     x_proto=1,
     x_host=1,
-    x_prefix=1
 )
+
+# 2. Своя middleware для Ingress: подставляет префикс в Location-редиректы
+class IngressFix:
+    def __init__(self, wsgi_app):
+        self.wsgi_app = wsgi_app
+
+    def __call__(self, environ, start_response):
+        ingress_path = environ.get("HTTP_X_INGRESS_PATH", "")
+
+        def fixed_start_response(status, headers, exc_info=None):
+            if ingress_path:
+                new_headers = []
+                for k, v in headers:
+                    if k.lower() == "location" and v.startswith("/"):
+                        v = ingress_path + v
+                    new_headers.append((k, v))
+                headers = new_headers
+            return start_response(status, headers, exc_info)
+
+        return self.wsgi_app(environ, fixed_start_response)
+
+app.wsgi_app = IngressFix(app.wsgi_app)
+
+# 3. Контекст-процессор: чтобы в шаблонах был доступен ingress_path
+@app.context_processor
+def inject_ingress_path():
+    return {"ingress_path": request.headers.get("X-Ingress-Path", "")}
 # Если папка /data существует (в аддоне) — используем её
 # Иначе (локально) — папку скрипта
 if os.path.isdir("/data"):
