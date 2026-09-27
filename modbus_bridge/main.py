@@ -240,12 +240,21 @@ def on_disconnect(client, userdata, rc):
 def modbus_loop():
     print("Modbus-цикл запускается...")
     
-    
-    # 1. Переменные окружения
-    MQTT_HOST = os.environ.get("MQTT_HOST", "core-mosquitto")
-    MQTT_PORT = int(os.environ.get("MQTT_PORT", 1883))
-    MQTT_USER = os.environ.get("MQTT_USER", "")
-    MQTT_PASS = os.environ.get("MQTT_PASSWORD", "")
+    # 1. Чтение опций из /data/options.json (основной способ HA)
+    HA_OPTIONS = {}
+    if os.path.exists("/data/options.json"):
+        with open("/data/options.json", "r") as f:
+            HA_OPTIONS = json.load(f)
+
+    MQTT_HOST = HA_OPTIONS.get("mqtt_host", os.environ.get("MQTT_HOST", "core-mosquitto"))
+    MQTT_PORT = int(HA_OPTIONS.get("mqtt_port", os.environ.get("MQTT_PORT", 1883)))
+    MQTT_USER = HA_OPTIONS.get("mqtt_user", os.environ.get("MQTT_USER", ""))
+    MQTT_PASS = HA_OPTIONS.get("mqtt_password", os.environ.get("MQTT_PASSWORD", ""))
+
+    print(f"DEBUG: options.json={HA_OPTIONS}")
+    print(f"DEBUG: host={MQTT_HOST}, port={MQTT_PORT}, user='{MQTT_USER}', pass='***'")
+
+
 
     # 2. Загрузка конфига
     config = load_config()
