@@ -239,7 +239,8 @@ def on_disconnect(client, userdata, rc):
 
 def modbus_loop():
     print("Modbus-цикл запускается...")
-
+    
+    
     # 1. Переменные окружения
     MQTT_HOST = os.environ.get("MQTT_HOST", "core-mosquitto")
     MQTT_PORT = int(os.environ.get("MQTT_PORT", 1883))
@@ -270,6 +271,7 @@ def modbus_loop():
     mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "modbus_bridge")
     mqtt_client.on_connect = on_connect
     mqtt_client.on_disconnect = on_disconnect
+    print(f"DEBUG: host={MQTT_HOST}, port={MQTT_PORT}, user='{MQTT_USER}', pass='{MQTT_PASS}'")
     if MQTT_USER:
         mqtt_client.username_pw_set(MQTT_USER, MQTT_PASS)
     try:
