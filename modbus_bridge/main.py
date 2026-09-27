@@ -8,9 +8,11 @@ from pymodbus.client import ModbusSerialClient
 from flask import Flask, jsonify, render_template, request, redirect, url_for
 
 app = Flask(__name__)
+
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-# 1. Оставляем ProxyFix только для IP/протокола — БЕЗ x_prefix
+# === INGRESS FIX ===
+# ProxyFix без x_prefix — HA Ingress использует другой заголовок
 app.wsgi_app = ProxyFix(
     app.wsgi_app,
     x_for=1,
@@ -18,8 +20,10 @@ app.wsgi_app = ProxyFix(
     x_host=1,
 )
 
-# 2. Своя middleware для Ingress: подставляет префикс в Location-редиректы
+
 class IngressFix:
+    """Middleware: подставляет X-Ingress-Path в Location-заголовки редиректов."""
+
     def __init__(self, wsgi_app):
         self.wsgi_app = wsgi_app
 
@@ -38,14 +42,18 @@ class IngressFix:
 
         return self.wsgi_app(environ, fixed_start_response)
 
+
 app.wsgi_app = IngressFix(app.wsgi_app)
 
-# 3. Контекст-процессор: чтобы в шаблонах был доступен ingress_path
+
 @app.context_processor
 def inject_ingress_path():
+    from flask import request
     return {"ingress_path": request.headers.get("X-Ingress-Path", "")}
-# Если папка /data существует (в аддоне) — используем её
-# Иначе (локально) — папку скрипта
+
+
+# === КОНФИГУРАЦИЯ ===
+
 if os.path.isdir("/data"):
     SCRIPT_DIR = "/data"
 else:
@@ -54,7 +62,6 @@ else:
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "config.json")
 config_lock = threading.Lock()
 
-# === ЗНАЧЕНИЯ ИЗ ОКРУЖЕНИЯ (для аддона) ИЛИ ДЕФОЛТЫ (для локального запуска) ===
 default_config = {
     "modbus": {
         "port": os.environ.get("MODBUS_PORT", "/dev/ttyUSB0"),
@@ -67,20 +74,22 @@ default_config = {
     "sensors": []
 }
 
+
 def load_config():
     with config_lock:
         if not os.path.exists(CONFIG_PATH):
-            # Создаём файл из default_config
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(default_config, f, indent=4, ensure_ascii=False)
             return default_config
         with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
 
+
 def save_config(config):
     with config_lock:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=4, ensure_ascii=False)
+
 
 # === FLASK МАРШРУТЫ ===
 
@@ -90,9 +99,11 @@ def index():
     sensors = config.get("sensors", [])
     return render_template("index.html", sensors=sensors, config=config)
 
+
 @app.route("/hello")
 def hello():
     return jsonify({"message": "Hello, World!"})
+
 
 @app.route("/add", methods=["POST"])
 def add_sensor():
@@ -116,6 +127,7 @@ def add_sensor():
     save_config(config)
     return redirect(url_for("index"))
 
+
 @app.route("/delete", methods=["POST"])
 def delete_sensor():
     slave_id = int(request.form.get("slave_id"))
@@ -123,6 +135,7 @@ def delete_sensor():
     config["sensors"] = [s for s in config["sensors"] if s["slave_id"] != slave_id]
     save_config(config)
     return redirect(url_for("index"))
+
 
 @app.route("/settings", methods=["POST"])
 def update_settings():
@@ -137,6 +150,7 @@ def update_settings():
     }
     save_config(config)
     return redirect(url_for("index"))
+
 
 @app.route("/edit/<int:slave_id>", methods=["GET", "POST"])
 def edit_sensor(slave_id):
@@ -165,16 +179,17 @@ def edit_sensor(slave_id):
         return redirect(url_for("index"))
     return render_template("edit.html", sensor=sensor)
 
+
 # === MQTT DISCOVERY ===
 
 def setup_mqtt_discovery(mqtt_client, config):
     for sensor in config["sensors"]:
         if not sensor["enabled"]:
             continue
-        
+
         slave_id = sensor["slave_id"]
         name = sensor["name"]
-        
+
         # Температура
         temp_config = {
             "name": f"{name} (температура)",
@@ -188,7 +203,7 @@ def setup_mqtt_discovery(mqtt_client, config):
             json.dumps(temp_config),
             retain=True
         )
-        
+
         # Влажность
         hum_config = {
             "name": f"{name} (влажность)",
@@ -203,18 +218,37 @@ def setup_mqtt_discovery(mqtt_client, config):
             retain=True
         )
 
+
+# === MQTT КОЛБЭКИ ===
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print("MQTT: подключено")
+    else:
+        print(f"MQTT: ошибка подключения, код {rc} (4=неверный логин/пароль, 5=не авторизован)")
+
+
+def on_disconnect(client, userdata, rc):
+    if rc == 0:
+        print("MQTT: отключено (плановое)")
+    else:
+        print(f"MQTT: отключено, код {rc}")
+
+
 # === MODBUS + MQTT ЦИКЛ ===
 
 def modbus_loop():
     print("Modbus-цикл запускается...")
-    
-    # 1. Переменные окружения (в HA-аддоне задаются через UI, локально — дефолты)
-    MQTT_HOST = os.environ.get("MQTT_HOST", "localhost")
+
+    # 1. Переменные окружения
+    MQTT_HOST = os.environ.get("MQTT_HOST", "core-mosquitto")
     MQTT_PORT = int(os.environ.get("MQTT_PORT", 1883))
-    
-    # 2. Загрузка конфига (при первом запуске создаётся из default_config)
+    MQTT_USER = os.environ.get("MQTT_USER", "")
+    MQTT_PASS = os.environ.get("MQTT_PASSWORD", "")
+
+    # 2. Загрузка конфига
     config = load_config()
-    
+
     # 3. Modbus-клиент
     client = ModbusSerialClient(
         port=config["modbus"]["port"],
@@ -225,40 +259,52 @@ def modbus_loop():
         bytesize=8,
         timeout=config["modbus"]["timeout"]
     )
-    client.connect()
-    
+    try:
+        client.connect()
+        print("Modbus: подключено")
+    except Exception as e:
+        print(f"Modbus: ошибка подключения: {e}")
+        print("Modbus-цикл будет продолжать попытки...")
+
     # 4. MQTT-клиент
     mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, "modbus_bridge")
-    mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
-    mqtt_client.loop_start()
-    
+    mqtt_client.on_connect = on_connect
+    mqtt_client.on_disconnect = on_disconnect
+    if MQTT_USER:
+        mqtt_client.username_pw_set(MQTT_USER, MQTT_PASS)
+    try:
+        mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
+        mqtt_client.loop_start()
+    except Exception as e:
+        print(f"MQTT: ошибка подключения: {e}")
+
     # 5. MQTT Discovery
     setup_mqtt_discovery(mqtt_client, config)
-    
-    # 6. Основной цикл опроса
-    try:
-        last_config_hash = None
-        while True:
-            config = load_config()  # ← перечитываем каждый раз
 
-            #Проверяем, изменился ли конфиг
-            config_hash = json.dumps(config, sort_keys = True)
+    # 6. Основной цикл опроса
+    last_config_hash = None
+    try:
+        while True:
+            config = load_config()
+
+            # Проверяем, изменился ли конфиг
+            config_hash = json.dumps(config, sort_keys=True)
             if config_hash != last_config_hash:
-                print("Конфиг изменился - обновляем discovery")
+                print("Конфиг изменился — обновляем discovery")
                 setup_mqtt_discovery(mqtt_client, config)
                 last_config_hash = config_hash
-            
+
             for sensor in config["sensors"]:
                 if not sensor["enabled"]:
                     continue
-                
+
                 slave_id = sensor["slave_id"]
                 temp_reg = sensor["temp_register"]
                 hum_reg = sensor["hum_register"]
                 scale = sensor["scale"]
                 name = sensor["name"]
                 reg_type = sensor["register_type"]
-                
+
                 # Чтение регистров
                 if reg_type == "holding":
                     result_temp = client.read_holding_registers(address=temp_reg, count=1, device_id=slave_id)
@@ -266,31 +312,42 @@ def modbus_loop():
                 else:
                     result_temp = client.read_input_registers(address=temp_reg, count=1, device_id=slave_id)
                     result_hum = client.read_input_registers(address=hum_reg, count=1, device_id=slave_id)
-                
-                # Публикация
-                temp_error = result_temp.isError()
-                hum_error = result_hum.isError()
-                if not temp_error and not hum_error:
+
+                # Публикация температуры (независимо от влажности)
+                if not result_temp.isError():
                     temp = result_temp.registers[0] * scale
-                    hum = result_hum.registers[0] * scale
-                    
-                    mqtt_client.publish(f"homeassistant/sensor/sensor{slave_id}_temp/state", str(temp))
-                    mqtt_client.publish(f"homeassistant/sensor/sensor{slave_id}_hum/state", str(hum))
-                    
-                    print(f"{name}: T={temp:.1f}°C, H={hum:.1f}%")
+                    mqtt_client.publish(
+                        f"homeassistant/sensor/sensor{slave_id}_temp/state",
+                        str(temp),
+                        retain=True
+                    )
+                    print(f"{name}: T={temp:.1f}°C")
                 else:
-                    if temp_error:
-                        print(f"{name}: Ошибка чтения температуры: {result_temp}")
-                    if hum_error:
-                        print(f"{name}: Ошибка чтения влажности: {result_hum}")
-            
+                    print(f"{name}: Ошибка чтения температуры: {result_temp}")
+
+                # Публикация влажности (независимо от температуры)
+                if not result_hum.isError():
+                    hum = result_hum.registers[0] * scale
+                    mqtt_client.publish(
+                        f"homeassistant/sensor/sensor{slave_id}_hum/state",
+                        str(hum),
+                        retain=True
+                    )
+                    print(f"{name}: H={hum:.1f}%")
+                else:
+                    print(f"{name}: Ошибка чтения влажности: {result_hum}")
+
             time.sleep(config["modbus"]["poll_interval"])
-    
+
     except KeyboardInterrupt:
         print("Modbus-цикл завершён")
     finally:
-        client.close()
+        try:
+            client.close()
+        except Exception:
+            pass
         mqtt_client.loop_stop()
+
 
 # === ТОЧКА ВХОДА ===
 
